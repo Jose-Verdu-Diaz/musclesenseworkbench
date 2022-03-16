@@ -489,11 +489,56 @@ def read_and_normalize_data(DIRS, test=False):
         if len(DIR)<1:
             raise Exception('No data loaded')
 
+        print('raw fatimg shape and type', t1img[0].shape, t1img[0].dtype) 
+        print('raw maskimg shape and type', maskimg[0].shape, maskimg[0].dtype)
+
+        DIR_new, t1img_new, maskimg_new=[],[],[]
         for imgi in range(0,len(DIR)):
             if test:
                 assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]) or np.array_equal(np.unique(maskimg[imgi]),[0])) 
             else:
                 assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]))
+
+            for slice in range(0,t1img[imgi].shape[2]):
+                mask_validity=valid_mask(scale_to_target(maskimg[imgi][:,:,slice]),DIR[imgi]+'^slice'+str(slice))
+                TO_ADD=False
+                if mask_validity==MASK_VALIDITY_VALID:
+
+                    TO_ADD=True
+                elif mask_validity==MASK_VALIDITY_SINGLESIDED:
+
+                    half_size=maskimg[imgi].shape[0]//2
+                    if valid_mask(scale_to_target(maskimg[imgi][:half_size,:,slice]),DIR[imgi]+'^slice'+str(slice)+'^side1')==MASK_VALIDITY_VALID: 
+                        for img_it in (t1img,maskimg):
+                            img_it[imgi][:,:,slice]=scale_A_to_B(img_it[imgi][:half_size,:,slice],img_it[imgi][:,:,slice])
+                        TO_ADD=True
+                    elif valid_mask(scale_to_target(maskimg[imgi][half_size:,:,slice]),DIR[imgi]+'^slice'+str(slice)+'^side2')==MASK_VALIDITY_VALID: 
+                        for img_it in (t1img,maskimg):
+                            img_it[imgi][:,:,slice]=scale_A_to_B(img_it[imgi][half_size:,:,slice],img_it[imgi][:,:,slice])
+                        TO_ADD=True
+                    else:
+                        TO_ADD=test
+                else: 
+                    TO_ADD=test
+
+                if TO_ADD:
+                    t1slice=scale_to_target(t1img[imgi][:,:,slice])
+                    maskslice=scale_to_target(maskimg[imgi][:,:,slice])
+
+                    if test:
+                        assert(np.array_equal(np.unique(maskslice),[0,1]) or np.array_equal(np.unique(maskslice),[0])) 
+                    else:
+                        assert(np.array_equal(np.unique(maskslice),[0,1]))
+
+                    t1img_new.append(t1slice)
+                    maskimg_new.append(maskslice)
+                    DIR_text=DIR[imgi]+'^slice'+str(slice)
+                    DIR_new.append(DIR_text)
+
+        if not test and len(DIR_new)!=len(DIR):
+            print('INFO: len(DIR_new)!=len(DIR)',len(DIR_new),len(DIR))
+
+        DIR=DIR_new
 
         t1img = np.array(t1img, dtype=np.float32)
         maskimg = np.array(maskimg, dtype=np.uint8)
