@@ -182,17 +182,19 @@ def load_BFC_image(filename,test):
         nibobj=nib.load(BFCfilename)
         return nibobj, nibobj.get_data()
         
-def load_case_base(inputdir,DIR,test=False):
+def load_case_base(inputdir,DIR,multiclass,test=False):
     print('load_case',DIR)
     TK=DIR.split('^')
     assert(len(TK)>=2)
     ll=TK[0]
     DIR=TK[1]
 
-    if RUNTIME_PARAMS['multiclass']:
+    if multiclass:
         filename=glob.glob(os.path.join(DIR,'t1.nii*'))[0]
         t1imgobj,t1img = load_BFC_image(filename,test)
-        return (fatimg, t1img, maskimg)
+        maskimg=np.zeros(t1img.shape,dtype=np.uint8)
+
+        return (t1img, maskimg)
 
     else:
         if 'Amy_GOSH' in DIR:
@@ -405,7 +407,7 @@ def load_case(inputdir,DIR, multiclass, test=False):
 
     if multiclass:      
         try:
-            (t1img, maskimg) = load_case_base(inputdir,DIR,test)
+            (t1img, maskimg) = load_case_base(inputdir,DIR, multiclass, test)
         except Exception as e:
             print(repr(e))
             print('Could not get image data for '+DIR)
@@ -422,7 +424,7 @@ def load_case(inputdir,DIR, multiclass, test=False):
 
     else:
         try:
-            (fatimg,waterimg,dixon_345img,dixon_575img,maskimg)=load_case_base(inputdir,DIR,test)
+            (fatimg,waterimg,dixon_345img,dixon_575img,maskimg)=load_case_base(inputdir,DIR,multiclass,test)
         except Exception as e:
             print(repr(e))
             print('Could not get image data for '+DIR)
@@ -483,8 +485,50 @@ def scale_A_to_B(A,B):
 
 def read_and_normalize_data(DIRS, test=False):
     if RUNTIME_PARAMS['multiclass']:
-    else:
+        DIR, t1img, maskimg = load_data(DIRS, test)
+        if len(DIR)<1:
+            raise Exception('No data loaded')
 
+        for imgi in range(0,len(DIR)):
+            if test:
+                assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]) or np.array_equal(np.unique(maskimg[imgi]),[0])) 
+            else:
+                assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]))
+
+        t1img = np.array(t1img, dtype=np.float32)
+        maskimg = np.array(maskimg, dtype=np.uint8)
+
+        t1img = t1img.reshape(t1img.shape[3], t1img.shape[1], t1img.shape[2], t1img.shape[0])
+        maskimg = maskimg.reshape(maskimg.shape[3], maskimg.shape[1], maskimg.shape[2], maskimg.shape[0])
+
+        print('fatimg shape and type',t1img.shape,t1img.dtype) 
+        print('maskimg shape and type',maskimg.shape,maskimg.dtype)
+
+        data = np.concatenate((t1img, t1img, t1img), axis=3) # Repeat 3 times to fit the CNN input shape -J
+
+        print('Data shape:', data.shape)
+        print('Lesion mask shape:', maskimg.shape)
+
+        print('Mean data before normalisation: '+str(np.mean(data)))
+        print('Std data before normalisation: '+str(np.std(data)))
+
+        training_means = np.nanmean(data, axis=(1,2))
+        training_stds = np.nanstd(data, axis=(1,2))
+        training_stds_to_divide_by = training_stds.copy()
+        training_stds_to_divide_by[training_stds_to_divide_by==0] = 1.0
+
+        print('Data means matrix shape: ',training_means.shape)
+
+        for i in range(0,data.shape[0]):
+            for j in range(0,data.shape[3]):
+                data[i,:,:,j] = (data[i,:,:,j] - training_means[i,j]) / training_stds_to_divide_by[i,j]
+
+        print('Mean data after normalisation: '+ str(np.mean(data)))
+        print('Std data after normalisation: '+ str(np.std(data)))
+
+        return DIR, data, maskimg
+
+    else:
         DIR,fatimg,waterimg,dixon_345img,dixon_575img,maskimg = load_data(DIRS, test)
         if len(DIR)<1:
             raise Exception('No data loaded')
@@ -553,7 +597,7 @@ def read_and_normalize_data(DIRS, test=False):
         print('waterimg shape and type',waterimg.shape,waterimg.dtype) 
         print('dixon_345img shape and type',dixon_345img.shape,dixon_345img.dtype) 
         print('dixon_575img shape and type',dixon_575img.shape,dixon_575img.dtype) 
-        print('maskimg shape and type',maskimg.shape,maskimg.dtype) 
+        print('maskimg shape and type',maskimg.shape,maskimg.dtype)
 
         fatimg = fatimg.reshape(fatimg.shape[0], fatimg.shape[1], fatimg.shape[2], 1)
         waterimg = waterimg.reshape(waterimg.shape[0], waterimg.shape[1], waterimg.shape[2], 1)
@@ -582,7 +626,7 @@ def read_and_normalize_data(DIRS, test=False):
         print('Mean data before normalisation: '+str(np.mean(data)))
         print('Std data before normalisation: '+str(np.std(data)))
 
-        if True:
+        if True: # Always evaluates to true -J
             training_means = np.nanmean(data, axis=(1,2))
             training_stds = np.nanstd(data, axis=(1,2))
             training_stds_to_divide_by = training_stds.copy()
