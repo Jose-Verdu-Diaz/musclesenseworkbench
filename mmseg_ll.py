@@ -59,7 +59,7 @@ simplerModel=False
 
 np.random.seed(0)
 
-target_size_y,target_size_x=320//scale_down_factor,160//scale_down_factor
+target_size_y, target_size_x = 320//scale_down_factor, 160//scale_down_factor
 
 if MY_PC: batch_size=1
 else: 
@@ -483,6 +483,7 @@ def scale_A_to_B(A,B):
 
     return scale2D(A,B.shape[0],B.shape[1],order=3,mode='nearest',cval=0.0,prefilter=True)
 
+
 def read_and_normalize_data(DIRS, test=False):
     if RUNTIME_PARAMS['multiclass']:
         DIR, t1img, maskimg = load_data(DIRS, test)
@@ -492,59 +493,58 @@ def read_and_normalize_data(DIRS, test=False):
         print('raw fatimg shape and type', t1img[0].shape, t1img[0].dtype) 
         print('raw maskimg shape and type', maskimg[0].shape, maskimg[0].dtype)
 
-        DIR_new, t1img_new, maskimg_new=[],[],[]
-        for imgi in range(0,len(DIR)):
-            if test:
-                assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]) or np.array_equal(np.unique(maskimg[imgi]),[0])) 
-            else:
-                assert(np.array_equal(np.unique(maskimg[imgi]),[0,1]))
+        DIR_new, t1img_new, maskimg_new = [],[],[]
+        for imgi in range(0, len(DIR)):
 
             for slice in range(0,t1img[imgi].shape[2]):
-                mask_validity=valid_mask(scale_to_target(maskimg[imgi][:,:,slice]),DIR[imgi]+'^slice'+str(slice))
-                TO_ADD=False
-                if mask_validity==MASK_VALIDITY_VALID:
+                mask_validity = valid_mask(scale_to_target(maskimg[imgi][:,:,slice]), f'{DIR[imgi]}^slice{str(slice)}')
+                TO_ADD = False
 
-                    TO_ADD=True
-                elif mask_validity==MASK_VALIDITY_SINGLESIDED:
+                if mask_validity == MASK_VALIDITY_VALID:
+                    TO_ADD = True
 
-                    half_size=maskimg[imgi].shape[0]//2
-                    if valid_mask(scale_to_target(maskimg[imgi][:half_size,:,slice]),DIR[imgi]+'^slice'+str(slice)+'^side1')==MASK_VALIDITY_VALID: 
-                        for img_it in (t1img,maskimg):
-                            img_it[imgi][:,:,slice]=scale_A_to_B(img_it[imgi][:half_size,:,slice],img_it[imgi][:,:,slice])
-                        TO_ADD=True
-                    elif valid_mask(scale_to_target(maskimg[imgi][half_size:,:,slice]),DIR[imgi]+'^slice'+str(slice)+'^side2')==MASK_VALIDITY_VALID: 
-                        for img_it in (t1img,maskimg):
-                            img_it[imgi][:,:,slice]=scale_A_to_B(img_it[imgi][half_size:,:,slice],img_it[imgi][:,:,slice])
-                        TO_ADD=True
-                    else:
-                        TO_ADD=test
+                elif mask_validity == MASK_VALIDITY_SINGLESIDED:
+                    half_size = maskimg[imgi].shape[0] // 2
+
+                    if valid_mask(scale_to_target(maskimg[imgi][:half_size,:,slice]), f'{DIR[imgi]}^slice{str(slice)}^side1') == MASK_VALIDITY_VALID: 
+                        for img_it in (t1img, maskimg):
+                            img_it[imgi][:,:,slice] = scale_A_to_B(img_it[imgi][:half_size,:,slice],img_it[imgi][:,:,slice])
+
+                        TO_ADD = True
+
+                    elif valid_mask(scale_to_target(maskimg[imgi][half_size:,:,slice]), f'{DIR[imgi]}^slice{str(slice)}^side2') == MASK_VALIDITY_VALID: 
+                        for img_it in (t1img, maskimg):
+                            img_it[imgi][:,:,slice] = scale_A_to_B(img_it[imgi][half_size:,:,slice], img_it[imgi][:,:,slice])
+
+                        TO_ADD = True
+
+                    else: TO_ADD = test
+
+                elif mask_validity == MASK_VALIDITY_BLANKMASK: TO_ADD = True
+
                 else: 
                     TO_ADD=test
 
                 if TO_ADD:
-                    t1slice=scale_to_target(t1img[imgi][:,:,slice])
-                    maskslice=scale_to_target(maskimg[imgi][:,:,slice])
-
-                    if test:
-                        assert(np.array_equal(np.unique(maskslice),[0,1]) or np.array_equal(np.unique(maskslice),[0])) 
-                    else:
-                        assert(np.array_equal(np.unique(maskslice),[0,1]))
+                    t1slice = scale_to_target(t1img[imgi][:,:,slice])
+                    maskslice = scale_to_target(maskimg[imgi][:,:,slice])
 
                     t1img_new.append(t1slice)
                     maskimg_new.append(maskslice)
-                    DIR_text=DIR[imgi]+'^slice'+str(slice)
+                    DIR_text = f'{DIR[imgi]}^slice{str(slice)}'
                     DIR_new.append(DIR_text)
 
         if not test and len(DIR_new)!=len(DIR):
             print('INFO: len(DIR_new)!=len(DIR)',len(DIR_new),len(DIR))
 
-        DIR=DIR_new
+        DIR = DIR_new
+        t1img = np.array(t1img_new, dtype=np.float32)
+        maskimg = np.array(maskimg_new, dtype=np.uint8)
 
-        t1img = np.array(t1img, dtype=np.float32)
-        maskimg = np.array(maskimg, dtype=np.uint8)
+        del DIR_new,t1img_new,maskimg_new
 
-        t1img = t1img.reshape(t1img.shape[3], t1img.shape[1], t1img.shape[2], t1img.shape[0])
-        maskimg = maskimg.reshape(maskimg.shape[3], maskimg.shape[1], maskimg.shape[2], maskimg.shape[0])
+        t1img = t1img.reshape(t1img.shape[0], t1img.shape[1], t1img.shape[2], 1)
+        maskimg = maskimg.reshape(maskimg.shape[0], maskimg.shape[1], maskimg.shape[2], 1)
 
         print('fatimg shape and type',t1img.shape,t1img.dtype) 
         print('maskimg shape and type',maskimg.shape,maskimg.dtype)
@@ -763,7 +763,7 @@ def print_scores(data,data_mask,preds,std_preds,test_id):
     print('Saving results')
     for i in range(0,preds.shape[0]):
         DIR=test_id[i]
-        DSCs,cutoffs=calc_dice(DIR,np.squeeze(data_mask[i]),preds[i])
+        DSCs, cutoffs = calc_dice(DIR,np.squeeze(data_mask[i]),preds[i])
         assert(len(DSCs) in [0,1])
 
         if len(DSCs)==1:
@@ -800,7 +800,7 @@ def print_scores(data,data_mask,preds,std_preds,test_id):
             except:
                 print('Could not load '+filename_std)
 
-        if maskimg is None or maskimg_std is None:
+        if RUNTIME_PARAMS['multiclass'] is False and (maskimg is None or maskimg_std is None) :
             if 'Amy_GOSH' in DIR:
                 fatfilename=glob.glob(os.path.join(DIR,'*DIXON_F.nii*'))[0]
             elif RUNTIME_PARAMS['inputdir']!='train' and RUNTIME_PARAMS['inputdir']!='validate':
@@ -814,6 +814,15 @@ def print_scores(data,data_mask,preds,std_preds,test_id):
             maskimg=np.zeros((nibobj.get_data().shape[0],nibobj.get_data().shape[1],nibobj.get_data().shape[2]),dtype=np.float32)
 
             nibobj_std=nib.load(fatfilename)
+            maskimg_std=np.zeros((nibobj_std.get_data().shape[0],nibobj_std.get_data().shape[1],nibobj_std.get_data().shape[2]),dtype=np.float32)
+
+        elif RUNTIME_PARAMS['multiclass'] is True and (maskimg is None or maskimg_std is None) :
+            t1filename=glob.glob(os.path.join(DIR,'t1.nii*'))[0]
+
+            nibobj=nib.load(t1filename)
+            maskimg=np.zeros((nibobj.get_data().shape[0],nibobj.get_data().shape[1],nibobj.get_data().shape[2]),dtype=np.float32)
+
+            nibobj_std=nib.load(t1filename)
             maskimg_std=np.zeros((nibobj_std.get_data().shape[0],nibobj_std.get_data().shape[1],nibobj_std.get_data().shape[2]),dtype=np.float32)
 
         assert(slice>=0)
